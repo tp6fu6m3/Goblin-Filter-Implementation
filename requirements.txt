@@ -1,0 +1,12 @@
+imageio==2.35.1
+matplotlib==3.7.5
+numpy==1.23.5
+opencv_contrib_python==4.5.5.62
+opencv_python==4.10.0.84
+pandas==1.4.4
+Pillow==11.0.0
+retinaface==1.1.1
+torch==1.9.0
+torchsummary==1.5.1
+torchvision==0.10.0
+tqdm==4.67.1
