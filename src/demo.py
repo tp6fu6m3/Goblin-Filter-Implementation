@@ -24,7 +24,7 @@ transform = torchvision.transforms.Compose([
     torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-filters = ['defult','landmarks','evil','fire','Gluttony','storm']
+filters = ['defult','landmarks','evil','fire','Gluttony','storm','random']
 evil = cv2.imread('../filter_image/evil.png', cv2.IMREAD_UNCHANGED)
 fire = cv2.imread('../filter_image/fire.png', cv2.IMREAD_UNCHANGED)
 Gluttony = cv2.imread('../filter_image/Gluttony.png', cv2.IMREAD_UNCHANGED)
@@ -63,9 +63,9 @@ class FilterStream:
         if filters[idx]=='defult':
             image_copy = detector.draw(image, faces)
         else:
-            for face in faces:
+            for i, face in enumerate(faces):
                 # x, y, w, h = face['x1'], face['y1'], face['x2']-face['x1'], face['y2']-face['y1']
-                x, y, w, h = int(face['x1']-0.4*(face['x2']-face['x1'])), face['y1'], int(1.8*(face['x2']-face['x1'])), face['y2']-face['y1']
+                x, y, w, h = int(face['x1']-0.5*(face['x2']-face['x1'])), int(face['y1']-0.3*(face['y2']-face['y1'])), int(2.0*(face['x2']-face['x1'])), int(1.3*(face['y2']-face['y1']))
                 
                 resize_image = cv2.resize(image[face['y1']:face['y2'], face['x1']:face['x2']], (256, 256))
                 resize_image = transform(resize_image)
@@ -78,7 +78,7 @@ class FilterStream:
                 percent_score = (score.item()-1)*25
                 
                 if filters[idx]=='landmarks':
-                    for i, (x, y) in enumerate(landmarks, 1):
+                    for i, (x, y) in enumerate(landmarks):
                         cv2.circle(image_copy, (int((x * (face['x2']-face['x1'])) + face['x1']), int((y * (face['y2']-face['y1'])) + face['y1'])), 2, [40, 117, 255], -1)
                 else:
                     if percent_score>60:
@@ -92,6 +92,15 @@ class FilterStream:
                             resize_filter = cv2.resize(Gluttony, (w, h))
                         elif filters[idx]=='storm':
                             resize_filter = cv2.resize(storm, (w, h))
+                        elif filters[idx]=='random':
+                            if i%4==0:
+                                resize_filter = cv2.resize(evil, (w, h))
+                            elif i%4==1:
+                                resize_filter = cv2.resize(fire, (w, h))
+                            elif i%4==2:
+                                resize_filter = cv2.resize(Gluttony, (w, h))
+                            elif i%4==3:
+                                resize_filter = cv2.resize(storm, (w, h))
                     roi_color = image[y:y+h, x:x+w]
                     ind = np.argwhere(resize_filter[:,:,3] > 0)
                     for i in range(3):
@@ -198,7 +207,7 @@ if __name__ == '__main__':
     filter_idx = 0
     webcam_stream = WebcamStream(webcam, delay = 0.01)
     # detector_stream = DetectorStream(image = webcam_stream.read())
-    filter_stream = FilterStream(filter_idx = 0, image = webcam_stream.read())
+    filter_stream = FilterStream(filter_idx = filter_idx, image = webcam_stream.read())
     # faces = detector_stream.read()
     webcam_stream.start()
     filter_stream.start()
@@ -236,6 +245,10 @@ if __name__ == '__main__':
             filter_idx = 3
         elif key & 0xFF == ord('g'):
             filter_idx = 4
+        elif key & 0xFF == ord('h'):
+            filter_idx = 5
+        elif key & 0xFF == ord('j'):
+            filter_idx = 6
     webcam_stream.stop()
     filter_stream.stop()
     # detector_stream.stop()

@@ -18,7 +18,7 @@ from retinaface import RetinaFace
 
 detector = RetinaFace(quality='normal')
 
-BASE_PATH = './'
+BASE_PATH = '../data/archive/'
 data = []
 with open(f'{BASE_PATH}/labels.txt', 'r', encoding='utf-8') as labels_file:
     labels = labels_file.readlines()
@@ -110,7 +110,7 @@ for epoch in range(num_epochs):
             val_loss += loss.item()
     
     print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader):.4f}, Val Loss: {val_loss/len(val_loader):.4f}')
-torch.save(model.state_dict(), './beauty_model_regressor.pth')
+torch.save(model.state_dict(), '../model/beauty_model_regressor.pth')
 
 model.eval()
 

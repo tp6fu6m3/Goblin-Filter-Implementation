@@ -134,7 +134,7 @@ class Preprocessor:
 
 class LandmarksDataset(Dataset):
     def __init__(self, preprocessor, train):
-        self.root_dir = 'ibug_300W_large_face_landmark_dataset'
+        self.root_dir = '../data/ibug_300W_large_face_landmark_dataset'
         
         self.image_paths = []
         self.landmarks = []
@@ -286,9 +286,9 @@ for epoch in range(epochs):
     if val_loss < best_loss:
         best_loss = val_loss
         print('Saving model....................')
-        torch.save(model.state_dict(), 'model.pt')
+        torch.save(model.state_dict(), '../model/model.pt')
 
     print(f'Epoch({epoch + 1}/{epochs}) -> Training Loss: {cum_loss/batches:.8f} | Validation Loss: {val_loss:.8f}')
 
-model.load_state_dict(torch.load('model.pt', map_location = 'cpu'))
+model.load_state_dict(torch.load('../model/model.pt', map_location = 'cpu'))
 

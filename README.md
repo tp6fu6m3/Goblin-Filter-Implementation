@@ -1,4 +1,4 @@
-# Facial Beauty Rating and Facial Landmark Detection Implementation with Goblin Real-Time Filtering
+# Facial Beauty Rating and Facial Landmark Detection Implementation on Goblin Real-Time Filtering
 
 Built an end-to-end Goblin filtering system. Facial landmark include points around the eyes, nose, and mouth on any face and are used in many applications, from facial tracking to emotion recognition. The completed project takes in any image containing faces and identifies the location of each face and their facial keypoints.
 
