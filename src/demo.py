@@ -1,12 +1,21 @@
-# coding: utf-8
-
+# -*- coding : utf-8-*-
 import numpy as np
 import cv2
 import torch
 import time
 import torchvision
 from threading import Thread
-from retinaface import RetinaFace
+# from retinaface import RetinaFace
+from utils import *
+
+torch.set_grad_enabled(False)
+cfg = cfg_mnet
+net = RetinaFace(cfg=cfg, phase = 'test')
+pretrained_dict = torch.load('../model/mobilenet0.25_Final.pth', map_location=lambda storage, loc: storage)
+f = lambda x: x.split('module.', 1)[-1] if x.startswith('module.') else x
+pretrained_dict = {f(key): value for key, value in pretrained_dict.items()}
+net.load_state_dict(pretrained_dict, strict=False)
+net.eval()
 
 model = torchvision.models.mobilenet_v3_small(pretrained=True)
 model.classifier.add_module('Linear', torch.nn.Linear(1000, 1))
@@ -17,7 +26,7 @@ model_ = torchvision.models.mobilenet_v3_small(pretrained=True)
 model_.classifier.add_module('Linear', torch.nn.Linear(1000, 136))
 model_.load_state_dict(torch.load('../model/model.pt', map_location = 'cpu'))
 model_.eval()
-detector = RetinaFace(quality='normal')
+# detector = RetinaFace(quality='normal')
 
 transform = torchvision.transforms.Compose([
     torchvision.transforms.ToTensor(),
@@ -30,6 +39,48 @@ fire = cv2.imread('../filter_image/fire.png', cv2.IMREAD_UNCHANGED)
 Gluttony = cv2.imread('../filter_image/Gluttony.png', cv2.IMREAD_UNCHANGED)
 storm = cv2.imread('../filter_image/storm.png', cv2.IMREAD_UNCHANGED)
 Elves = cv2.imread('../filter_image/Elves.png', cv2.IMREAD_UNCHANGED)
+
+def predict(image):
+    img = np.copy(image)
+    img = np.float32(img)
+    im_height, im_width, _ = img.shape
+    scale = torch.Tensor([img.shape[1], img.shape[0], img.shape[1], img.shape[0]])
+    img -= (104, 117, 123)
+    img = img.transpose(2, 0, 1)
+    img = torch.from_numpy(img).unsqueeze(0)
+    loc, conf, landms = net(img)
+    
+    priorbox = PriorBox(cfg, image_size=(im_height, im_width))
+    priors = priorbox.forward()
+    prior_data = priors.data
+    boxes = decode(loc.data.squeeze(0), prior_data, cfg['variance'])
+    boxes = boxes * scale
+    boxes = boxes.cpu().numpy()
+    scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
+    landms = decode_landm(landms.data.squeeze(0), prior_data, cfg['variance'])
+    scale1 = torch.Tensor([img.shape[3], img.shape[2], img.shape[3], img.shape[2],
+                           img.shape[3], img.shape[2], img.shape[3], img.shape[2],
+                           img.shape[3], img.shape[2]])
+    landms = landms * scale1
+    landms = landms.cpu().numpy()
+
+    inds = np.where(scores > 0.02)[0]
+    boxes = boxes[inds]
+    landms = landms[inds]
+    scores = scores[inds]
+
+    order = scores.argsort()[::-1]
+    boxes = boxes[order]
+    landms = landms[order]
+    scores = scores[order]
+
+    dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
+    keep = py_cpu_nms(dets, 0.4)
+    dets = dets[keep, :]
+    landms = landms[keep]
+    
+    dets = np.concatenate((dets, landms), axis=1)
+    return dets
 
 class FilterStream:
     def __init__(self, filter_idx, image):
@@ -54,20 +105,35 @@ class FilterStream:
             try:
                 self.frame = self.filtering(self.image, self.filter_idx)
             except Exception as e:
+                self.frame = self.image
                 print(e)
     
     def filtering(self, image, idx):
         image_copy = np.copy(image)
+        im_height, im_width, _ = image.shape
         
-        faces = detector.predict(image)
-        if filters[idx]=='defult':
-            image_copy = detector.draw(image, faces)
-        else:
-            for i, face in enumerate(faces):
+        faces = predict(image)
+        # faces = detector.predict(image)
+        for i, face in enumerate(faces):
+            if face[4] < 0.4:
+                continue
+            b = list(map(int, face))
+            if filters[idx]=='defult':
+                cv2.rectangle(image_copy, (b[0], b[1]), (b[2], b[3]), (0, 0, 255), 2)
+                cv2.circle(image_copy, (b[5], b[6]), 1, (0, 0, 255), 4)
+                cv2.circle(image_copy, (b[7], b[8]), 1, (0, 255, 255), 4)
+                cv2.circle(image_copy, (b[9], b[10]), 1, (255, 0, 255), 4)
+                cv2.circle(image_copy, (b[11], b[12]), 1, (0, 255, 0), 4)
+                cv2.circle(image_copy, (b[13], b[14]), 1, (255, 0, 0), 4)
+            # image_copy = detector.draw(image, faces)
+            else:
                 # x, y, w, h = face['x1'], face['y1'], face['x2']-face['x1'], face['y2']-face['y1']
-                x, y, w, h = int(face['x1']-0.5*(face['x2']-face['x1'])), int(face['y1']-0.3*(face['y2']-face['y1'])), int(2.0*(face['x2']-face['x1'])), int(1.3*(face['y2']-face['y1']))
-                
-                resize_image = cv2.resize(image[face['y1']:face['y2'], face['x1']:face['x2']], (256, 256))
+                # x, y, w, h = int(face['x1']-0.5*(face['x2']-face['x1'])), int(face['y1']-0.3*(face['y2']-face['y1'])), int(2.0*(face['x2']-face['x1'])), int(1.3*(face['y2']-face['y1']))
+                x, y, w, h = b[0], b[1], b[2]-b[0], b[3]-b[1]
+                try:
+                    resize_image = cv2.resize(image[b[1]:b[3], b[0]:b[2]], (256, 256))
+                except:
+                    continue
                 resize_image = transform(resize_image)
                 resize_image = resize_image.unsqueeze(0)
                 with torch.no_grad():
@@ -76,11 +142,13 @@ class FilterStream:
                 
                 landmarks = (landmarks.view(-1, 2) + 0.5).numpy()
                 percent_score = (score.item()-1)*25
-                
                 if filters[idx]=='landmarks':
-                    for i, (x, y) in enumerate(landmarks):
-                        cv2.circle(image_copy, (int((x * (face['x2']-face['x1'])) + face['x1']), int((y * (face['y2']-face['y1'])) + face['y1'])), 2, [40, 117, 255], -1)
+                    for x_ratio, y_ratio in landmarks:
+                        cv2.circle(image_copy, (int((x_ratio * w) + x), int((y_ratio * h) + y)), 2, [40, 117, 255], -1)
                 else:
+                    left, right, top, down = max(0, int(x-0.7*w)), min(im_width, int(x+1.7*w)), max(0, int(y-0.3*h)), min(im_height, int(y+1.1*h))
+                    x, y, w, h = int(x-0.7*w), int(y-0.3*h), int(2.4*w), int(1.4*h)
+                    
                     if percent_score>60:
                         resize_filter = cv2.resize(Elves, (w, h))
                     else:
@@ -101,11 +169,12 @@ class FilterStream:
                                 resize_filter = cv2.resize(Gluttony, (w, h))
                             elif i%4==3:
                                 resize_filter = cv2.resize(storm, (w, h))
-                    roi_color = image[y:y+h, x:x+w]
-                    ind = np.argwhere(resize_filter[:,:,3] > 0)
+                    roi_color = image[top:down, left:right]
+                    roi_resize_filter = resize_filter[top-y:down-y, left-x:right-x]
+                    ind = np.argwhere(roi_resize_filter[:,:,3] > 0)
                     for i in range(3):
-                        roi_color[ind[:,0],ind[:,1],i] = resize_filter[ind[:,0],ind[:,1],i]
-                    image_copy[y:y+h, x:x+w] = roi_color
+                        roi_color[ind[:,0],ind[:,1],i] = roi_resize_filter[ind[:,0],ind[:,1],i]
+                    image_copy[top:down, left:right] = roi_color
         return image_copy
     
     def write(self, filter_idx, image):
@@ -128,7 +197,6 @@ class WebcamStream:
         
         if self.vcap.isOpened() is False :
             print("[Exiting]: Error accessing webcam stream.")
-            exit(0)
         fps_input_stream = int(self.vcap.get(5))
         print('FPS of webcam hardware/input stream: {}'.format(fps_input_stream))
             
@@ -136,7 +204,6 @@ class WebcamStream:
         self.frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         if self.grabbed is False :
             print('[Exiting] No more frames to read')
-            exit(0)
 
         self.stopped = True 
         self.t = Thread(target=self.update, args=())
